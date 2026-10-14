@@ -1,0 +1,41 @@
+import shap
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+
+def rm_main(data):
+    # 1. Scheid de features van de voorspelde labels
+    columns_to_drop = ['Survived', 'prediction(Survived)']
+    columns_to_drop = [col for col in columns_to_drop if col in data.columns]
+    
+    X = data.drop(columns=columns_to_drop)
+    y = data['Survived']
+    
+    # Text naar dummies converteren
+    X_encoded = pd.get_dummies(X, drop_first=True)
+    
+    # Train het schaduwmodel
+    shadow_model = RandomForestClassifier(n_estimators=50, random_state=42)
+    shadow_model.fit(X_encoded, y)
+    
+    # 2. Initialiseer de explainer
+    explainer = shap.TreeExplainer(shadow_model)
+    
+    # 3. Bereken SHAP en DEACTIVEER de additiviteitscontrole (check_additivity=False)
+    # Dit voorkomt dat het script crasht op floating-point / vorm-verschillen.
+    shap_values = explainer.shap_values(X_encoded, check_additivity=False)
+    
+    # 4. Converteer de SHAP-matrix naar een DataFrame
+    # Bij classificatie geeft shap_values een lijst terug per klasse (0 of 1). 
+    # We pakken index 1 (de SHAP-waarden voor 'Wel overleefd')
+    if isinstance(shap_values, list):
+        shap_matrix = shap_values[1]
+    else:
+        # Afhankelijk van de SHAP-versie kan het een 3D-array of object zijn
+        shap_matrix = shap_values.values if hasattr(shap_values, 'values') else shap_values
+        if len(shap_matrix.shape) == 3: # Indien [samples, features, classes]
+            shap_matrix = shap_matrix[:, :, 1]
+            
+    shap_df = pd.DataFrame(shap_matrix, columns=[f"shap_{col}" for col in X_encoded.columns])
+    
+    # 5. Plak de SHAP-waarden vast aan de originele dataset
+    return pd.concat([data.reset_index(drop=True), shap_df], axis=1)

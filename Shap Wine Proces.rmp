@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><process version="12.1.001">
+  <context>
+    <input/>
+    <output/>
+    <macros/>
+  </context>
+  <operator activated="true" class="process" compatibility="12.1.001" expanded="true" name="Process">
+    <parameter key="logverbosity" value="init"/>
+    <parameter key="random_seed" value="2001"/>
+    <parameter key="send_mail" value="never"/>
+    <parameter key="notification_email" value=""/>
+    <parameter key="process_duration_for_mail" value="30"/>
+    <parameter key="encoding" value="SYSTEM"/>
+    <process expanded="true">
+      <operator activated="true" class="retrieve" compatibility="12.1.001" expanded="true" height="68" name="Retrieve wine-white" width="90" x="45" y="34">
+        <parameter key="repository_entry" value="../data/wine-white"/>
+      </operator>
+      <operator activated="true" class="blending:set_role" compatibility="12.1.001" expanded="true" height="82" name="Set Role" width="90" x="179" y="34">
+        <list key="set_roles">
+          <parameter key="quality" value="label"/>
+        </list>
+      </operator>
+      <operator activated="true" class="multiply" compatibility="12.1.001" expanded="true" height="103" name="Multiply" width="90" x="313" y="34"/>
+      <operator activated="true" class="concurrency:parallel_random_forest" compatibility="12.1.001" expanded="true" height="103" name="Random Forest" width="90" x="447" y="34">
+        <parameter key="number_of_trees" value="100"/>
+        <parameter key="criterion" value="least_square"/>
+        <parameter key="maximal_depth" value="10"/>
+        <parameter key="apply_pruning" value="false"/>
+        <parameter key="confidence" value="0.1"/>
+        <parameter key="apply_prepruning" value="false"/>
+        <parameter key="minimal_gain" value="0.01"/>
+        <parameter key="minimal_leaf_size" value="2"/>
+        <parameter key="minimal_size_for_split" value="4"/>
+        <parameter key="number_of_prepruning_alternatives" value="3"/>
+        <parameter key="random_splits" value="false"/>
+        <parameter key="guess_subset_ratio" value="true"/>
+        <parameter key="subset_ratio" value="0.2"/>
+        <parameter key="voting_strategy" value="confidence vote"/>
+        <parameter key="use_local_random_seed" value="false"/>
+        <parameter key="local_random_seed" value="1992"/>
+        <parameter key="enable_parallel_execution" value="true"/>
+      </operator>
+      <operator activated="true" class="apply_model" compatibility="12.1.001" expanded="true" height="82" name="Apply Model" width="90" x="447" y="289">
+        <list key="application_parameters"/>
+      </operator>
+      <operator activated="true" class="python_scripting:execute_python" compatibility="11.0.006" expanded="true" height="103" name="Execute Python" width="90" x="648" y="289">
+        <parameter key="script" value="import shap&#10;import pandas as pd&#10;from sklearn.ensemble import RandomForestClassifier&#10;&#10;def rm_main(data):&#10;    # 1. Scheid de features van de voorspelde labels&#10;    columns_to_drop = ['quality', 'prediction(quality)']&#10;    columns_to_drop = [col for col in columns_to_drop if col in data.columns]&#10;    &#10;    X = data.drop(columns=columns_to_drop)&#10;    y = data['quality']&#10;    &#10;    # Text naar dummies converteren&#10;    X_encoded = pd.get_dummies(X, drop_first=True)&#10;    &#10;    # Train het schaduwmodel&#10;    shadow_model = RandomForestClassifier(n_estimators=50, random_state=42)&#10;    shadow_model.fit(X_encoded, y)&#10;    &#10;    # 2. Initialiseer de explainer&#10;    explainer = shap.TreeExplainer(shadow_model)&#10;    &#10;    # 3. Bereken SHAP en DEACTIVEER de additiviteitscontrole (check_additivity=False)&#10;    # Dit voorkomt dat het script crasht op floating-point / vorm-verschillen.&#10;    shap_values = explainer.shap_values(X_encoded, check_additivity=False)&#10;    &#10;    # 4. Converteer de SHAP-matrix naar een DataFrame&#10;    # Bij classificatie geeft shap_values een lijst terug per klasse (0 of 1). &#10;    # We pakken index 1 (de SHAP-waarden voor 'Wel overleefd')&#10;    if isinstance(shap_values, list):&#10;        shap_matrix = shap_values[1]&#10;    else:&#10;        # Afhankelijk van de SHAP-versie kan het een 3D-array of object zijn&#10;        shap_matrix = shap_values.values if hasattr(shap_values, 'values') else shap_values&#10;        if len(shap_matrix.shape) == 3: # Indien [samples, features, classes]&#10;            shap_matrix = shap_matrix[:, :, 1]&#10;            &#10;    shap_df = pd.DataFrame(shap_matrix, columns=[f&quot;shap_{col}&quot; for col in X_encoded.columns])&#10;    &#10;    # 5. Plak de SHAP-waarden vast aan de originele dataset&#10;    return pd.concat([data.reset_index(drop=True), shap_df], axis=1)"/>
+        <parameter key="notebook_cell_tag_filter" value=""/>
+        <parameter key="use_default_python" value="true"/>
+        <parameter key="package_manager" value="conda (anaconda)"/>
+        <parameter key="use_macros" value="false"/>
+      </operator>
+      <connect from_op="Retrieve wine-white" from_port="output" to_op="Set Role" to_port="example set input"/>
+      <connect from_op="Set Role" from_port="example set output" to_op="Multiply" to_port="input"/>
+      <connect from_op="Multiply" from_port="output 1" to_op="Random Forest" to_port="training set"/>
+      <connect from_op="Multiply" from_port="output 2" to_op="Apply Model" to_port="unlabelled data"/>
+      <connect from_op="Random Forest" from_port="model" to_op="Apply Model" to_port="model"/>
+      <connect from_op="Apply Model" from_port="labelled data" to_op="Execute Python" to_port="input 1"/>
+      <connect from_op="Execute Python" from_port="output 1" to_port="result 1"/>
+      <portSpacing port="source_input 1" spacing="0"/>
+      <portSpacing port="sink_result 1" spacing="0"/>
+      <portSpacing port="sink_result 2" spacing="0"/>
+    </process>
+  </operator>
+</process>

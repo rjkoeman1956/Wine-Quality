@@ -1,0 +1,16 @@
+import shap
+import pandas as pd
+
+def rm_main(model, data):
+    # 1. Selecteer alle kolommen behalve het label 'Survived'
+    X = data.drop(columns=['Survived'])
+    
+    # 2. Bereken SHAP met de TreeExplainer
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer(X)
+    
+    # 3. Converteer naar DataFrame met 'shap_' prefix
+    shap_df = pd.DataFrame(shap_values.values, columns=[f"shap_{col}" for col in X.columns])
+    
+    # 4. Plak de SHAP-waarden vast aan de originele dataset
+    return pd.concat([data, shap_df], axis=1)
